@@ -24,6 +24,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/metadata"
 	"github.com/apache/camel-k/pkg/resources"
 	"github.com/apache/camel-k/pkg/trait"
@@ -41,8 +42,8 @@ import (
 // It's recommended to use a different service account than "default" when running the integration.
 //
 // +camel-k:trait=master.
-type masterTrait struct {
-	trait.BaseTrait `property:",squash"`
+type Trait struct {
+	traitv1.Trait `property:",squash" json:",inline"`
 	// Enables automatic configuration of the trait.
 	Auto *bool `property:"auto" json:"auto,omitempty"`
 	// When this flag is active, the operator analyzes the source code to add dependencies required by delegate endpoints.
@@ -57,7 +58,12 @@ type masterTrait struct {
 	// Label that will be used to identify all pods contending the lock. Defaults to "camel.apache.org/integration".
 	LabelKey *string `property:"label-key" json:"labelKey,omitempty"`
 	// Label value that will be used to identify all pods contending the lock. Defaults to the integration name.
-	LabelValue           *string  `property:"label-value" json:"labelValue,omitempty"`
+	LabelValue *string `property:"label-value" json:"labelValue,omitempty"`
+}
+
+type masterTrait struct {
+	trait.BaseTrait
+	Trait                `property:",squash"`
 	delegateDependencies []string `json:"-"`
 }
 

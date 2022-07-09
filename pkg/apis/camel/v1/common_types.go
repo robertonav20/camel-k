@@ -20,6 +20,8 @@ package v1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 )
 
 const (
@@ -101,25 +103,118 @@ type FailureRecovery struct {
 	AttemptTime metav1.Time `json:"attemptTime"`
 }
 
+// Traits represents the collection of trait configurations
+type Traits struct {
+	// The configuration of Affinity trait
+	Affinity *trait.AffinityTrait `property:"affinity" json:"affinity,omitempty"`
+	// The configuration of Builder trait
+	Builder *trait.BuilderTrait `property:"builder" json:"builder,omitempty"`
+	// The configuration of Camel trait
+	Camel *trait.CamelTrait `property:"camel" json:"camel,omitempty"`
+	// The configuration of Container trait
+	Container *trait.ContainerTrait `property:"container" json:"container,omitempty"`
+	// The configuration of Cron trait
+	Cron *trait.CronTrait `property:"cron" json:"cron,omitempty"`
+	// The configuration of Dependencies trait
+	Dependencies *trait.DependenciesTrait `property:"dependencies" json:"dependencies,omitempty"`
+	// The configuration of Deployer trait
+	Deployer *trait.DeployerTrait `property:"deployer" json:"deployer,omitempty"`
+	// The configuration of Deployment trait
+	Deployment *trait.DeploymentTrait `property:"deployment" json:"deployment,omitempty"`
+	// The configuration of Environment trait
+	Environment *trait.EnvironmentTrait `property:"environment" json:"environment,omitempty"`
+	// The configuration of Error Handler trait
+	ErrorHandler *trait.ErrorHandlerTrait `property:"error-handler" json:"error-handler,omitempty"`
+	// The configuration of GC trait
+	GC *trait.GCTrait `property:"gc" json:"gc,omitempty"`
+	// The configuration of Health trait
+	Health *trait.HealthTrait `property:"health" json:"health,omitempty"`
+	// The configuration of Ingress trait
+	Ingress *trait.IngressTrait `property:"ingress" json:"ingress,omitempty"`
+	// The configuration of Istio trait
+	Istio *trait.IstioTrait `property:"istio" json:"istio,omitempty"`
+	// The configuration of Jolokia trait
+	Jolokia *trait.JolokiaTrait `property:"jolokia" json:"jolokia,omitempty"`
+	// The configuration of JVM trait
+	JVM *trait.JVMTrait `property:"jvm" json:"jvm,omitempty"`
+	// The configuration of Kamelets trait
+	Kamelets *trait.KameletsTrait `property:"kamelets" json:"kamelets,omitempty"`
+	// The configuration of Knative trait
+	Knative *trait.KnativeTrait `property:"knative" json:"knative,omitempty"`
+	// The configuration of Knative Service trait
+	KnativeService *trait.KnativeServiceTrait `property:"knative-service" json:"knative-service,omitempty"`
+	// The configuration of Logging trait
+	Logging *trait.LoggingTrait `property:"logging" json:"logging,omitempty"`
+	// The configuration of Mount trait
+	Mount *trait.MountTrait `property:"mount" json:"mount,omitempty"`
+	// The configuration of OpenAPI trait
+	OpenAPI *trait.OpenAPITrait `property:"openapi" json:"openapi,omitempty"`
+	// The configuration of Owner trait
+	Owner *trait.OwnerTrait `property:"owner" json:"owner,omitempty"`
+	// The configuration of PDB trait
+	PDB *trait.PDBTrait `property:"pdb" json:"pdb,omitempty"`
+	// The configuration of Platform trait
+	Platform *trait.PlatformTrait `property:"platform" json:"platform,omitempty"`
+	// The configuration of Pod trait
+	Pod *trait.PodTrait `property:"pod" json:"pod,omitempty"`
+	// The configuration of Prometheus trait
+	Prometheus *trait.PrometheusTrait `property:"prometheus" json:"prometheus,omitempty"`
+	// The configuration of Pull Secret trait
+	PullSecret *trait.PullSecretTrait `property:"pull-secret" json:"pull-secret,omitempty"`
+	// The configuration of Quarkus trait
+	Quarkus *trait.QuarkusTrait `property:"quarkus" json:"quarkus,omitempty"`
+	// The configuration of Registry trait
+	Registry *trait.RegistryTrait `property:"registry" json:"registry,omitempty"`
+	// The configuration of Route trait
+	Route *trait.RouteTrait `property:"route" json:"route,omitempty"`
+	// The configuration of Service trait
+	Service *trait.ServiceTrait `property:"service" json:"service,omitempty"`
+	// The configuration of Service Binding trait
+	ServiceBinding *trait.ServiceBindingTrait `property:"service-binding" json:"service-binding,omitempty"`
+	// The configuration of Toleration trait
+	Toleration *trait.TolerationTrait `property:"toleration" json:"toleration,omitempty"`
+
+	// The extension point with addon traits
+	Addons map[string]AddonTrait `json:"addons,omitempty"`
+
+	// Deprecated: for backward compatibility.
+	Keda *TraitSpec `property:"keda" json:"keda,omitempty"`
+	// Deprecated: for backward compatibility.
+	Master *TraitSpec `property:"master" json:"master,omitempty"`
+	// Deprecated: for backward compatibility.
+	Strimzi *TraitSpec `property:"strimzi" json:"strimzi,omitempty"`
+	// Deprecated: for backward compatibility.
+	ThreeScale *TraitSpec `property:"3scale" json:"3scale,omitempty"`
+	// Deprecated: for backward compatibility.
+	Tracing *TraitSpec `property:"tracing" json:"tracing,omitempty"`
+}
+
+// AddonTrait represents the configuration of an addon trait
+type AddonTrait struct {
+	// Generic raw message, typically a map containing the keys (trait parameters) and the values (either single text or array)
+	RawMessage `json:",inline"`
+}
+
 // A TraitSpec contains the configuration of a trait
+// Deprecated: superceded by each Trait type, left for backward compatibility.
 type TraitSpec struct {
 	// TraitConfiguration parameters configuration
 	Configuration TraitConfiguration `json:"configuration"`
 }
 
 // TraitConfiguration represents the expected configuration for a given trait parameter
+// Deprecated: superceded by each Trait type, left for backward compatibility.
 type TraitConfiguration struct {
-	// generic raw message, tipically a map containing the keys (trait parameters) and the values (either single text or array)
+	// generic raw message, typically a map containing the keys (trait parameters) and the values (either single text or array)
 	RawMessage `json:",inline"`
 }
-
-// +kubebuilder:validation:Type=object
-// +kubebuilder:validation:Format=""
-// +kubebuilder:pruning:PreserveUnknownFields
 
 // RawMessage is a raw encoded JSON value.
 // It implements Marshaler and Unmarshaler and can
 // be used to delay JSON decoding or precompute a JSON encoding.
+// +kubebuilder:validation:Type=object
+// +kubebuilder:validation:Format=""
+// +kubebuilder:pruning:PreserveUnknownFields
 type RawMessage []byte
 
 // +kubebuilder:object:generate=false

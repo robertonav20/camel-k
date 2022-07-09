@@ -21,26 +21,21 @@ import (
 	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/batch/v1beta1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	"k8s.io/utils/pointer"
 
 	serving "knative.dev/serving/pkg/apis/serving/v1"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 )
 
-// The pod trait allows the customization of the Integration pods.
-// It applies the `PodSpecTemplate` struct contained in the Integration `.spec.podTemplate` field,
-// into the Integration deployment Pods template, using strategic merge patch.
-//
-// This can be used to customize the container where Camel routes execute,
-// by using the `integration` container name.
-//
-// +camel-k:trait=pod.
 type podTrait struct {
-	BaseTrait `property:",squash"`
+	BaseTrait
+	traitv1.PodTrait `property:",squash"`
 }
 
 func newPodTrait() Trait {
@@ -50,7 +45,7 @@ func newPodTrait() Trait {
 }
 
 func (t *podTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, nil
 	}
 
@@ -70,7 +65,7 @@ func (t *podTrait) Apply(e *Environment) error {
 	}
 	switch strategy {
 	case ControllerStrategyCronJob:
-		e.Resources.VisitCronJob(func(c *v1beta1.CronJob) {
+		e.Resources.VisitCronJob(func(c *batchv1.CronJob) {
 			if c.Name == e.Integration.Name {
 				if patchedPodSpec, err = t.applyChangesTo(&c.Spec.JobTemplate.Spec.Template.Spec, changes); err == nil {
 					c.Spec.JobTemplate.Spec.Template.Spec = *patchedPodSpec

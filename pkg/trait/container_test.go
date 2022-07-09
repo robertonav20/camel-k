@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util/camel"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
 	"github.com/apache/camel-k/pkg/util/test"
@@ -110,10 +111,10 @@ func TestContainerWithCustomName(t *testing.T) {
 			},
 			Spec: v1.IntegrationSpec{
 				Profile: v1.TraitProfileKubernetes,
-				Traits: map[string]v1.TraitSpec{
-					"container": test.TraitSpecFromMap(t, map[string]interface{}{
-						"name": "my-container-name",
-					}),
+				Traits: v1.Traits{
+					Container: &traitv1.ContainerTrait{
+						Name: "my-container-name",
+					},
 				},
 			},
 		},
@@ -149,8 +150,8 @@ func TestContainerWithCustomName(t *testing.T) {
 	assert.NotNil(t, d)
 	assert.Len(t, d.Spec.Template.Spec.Containers, 1)
 
-	trait := test.TraitSpecToMap(t, environment.Integration.Spec.Traits["container"])
-	assert.Equal(t, trait["name"], d.Spec.Template.Spec.Containers[0].Name)
+	trait := environment.Integration.Spec.Traits.Container
+	assert.Equal(t, trait.Name, d.Spec.Template.Spec.Containers[0].Name)
 }
 
 func TestContainerWithCustomImage(t *testing.T) {
@@ -176,10 +177,10 @@ func TestContainerWithCustomImage(t *testing.T) {
 			},
 			Spec: v1.IntegrationSpec{
 				Profile: v1.TraitProfileKubernetes,
-				Traits: map[string]v1.TraitSpec{
-					"container": test.TraitSpecFromMap(t, map[string]interface{}{
-						"image": "foo/bar:1.0.0",
-					}),
+				Traits: v1.Traits{
+					Container: &traitv1.ContainerTrait{
+						Image: "foo/bar:1.0.0",
+					},
 				},
 			},
 		},
@@ -220,8 +221,8 @@ func TestContainerWithCustomImage(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, environment.Integration.ObjectMeta.UID, ikt.ObjectMeta.OwnerReferences[0].UID)
 
-	trait := test.TraitSpecToMap(t, environment.Integration.Spec.Traits["container"])
-	assert.Equal(t, trait["image"], ikt.Spec.Image)
+	trait := environment.Integration.Spec.Traits.Container
+	assert.Equal(t, trait.Image, ikt.Spec.Image)
 }
 
 func TestContainerWithCustomImageAndIntegrationKit(t *testing.T) {
@@ -247,10 +248,10 @@ func TestContainerWithCustomImageAndIntegrationKit(t *testing.T) {
 			},
 			Spec: v1.IntegrationSpec{
 				Profile: v1.TraitProfileKubernetes,
-				Traits: map[string]v1.TraitSpec{
-					"container": test.TraitSpecFromMap(t, map[string]interface{}{
-						"image": "foo/bar:1.0.0",
-					}),
+				Traits: v1.Traits{
+					Container: &traitv1.ContainerTrait{
+						Image: "foo/bar:1.0.0",
+					},
 				},
 				IntegrationKit: &corev1.ObjectReference{
 					Name:      "bad-" + ServiceTestName,
@@ -293,10 +294,10 @@ func TestContainerWithImagePullPolicy(t *testing.T) {
 		Integration: &v1.Integration{
 			Spec: v1.IntegrationSpec{
 				Profile: v1.TraitProfileKubernetes,
-				Traits: map[string]v1.TraitSpec{
-					"container": test.TraitSpecFromMap(t, map[string]interface{}{
-						"imagePullPolicy": "Always",
-					}),
+				Traits: v1.Traits{
+					Container: &traitv1.ContainerTrait{
+						ImagePullPolicy: "Always",
+					},
 				},
 			},
 		},

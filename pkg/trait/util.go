@@ -19,6 +19,7 @@ package trait
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -26,6 +27,7 @@ import (
 	"strings"
 
 	user "github.com/mitchellh/go-homedir"
+	"github.com/pkg/errors"
 	"github.com/scylladb/go-set/strset"
 
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
@@ -222,31 +224,99 @@ func AddSourceDependencies(source v1.SourceSpec, catalog *camel.RuntimeCatalog) 
 	return dependencies
 }
 
-// Bool pointer operations:
+// AssertTraitsType asserts that traits is either v1.Traits or v1.IntegrationKitTraits.
+// This function is provided because Go doesn't have Either nor union types.
+func AssertTraitsType(traits interface{}) error {
+	_, ok1 := traits.(v1.Traits)
+	_, ok2 := traits.(v1.IntegrationKitTraits)
+	if !ok1 && !ok2 {
+		return errors.New("traits must be either v1.Traits or v1.IntegrationKitTraits")
+	}
 
-// BoolP returns a pointer to a bool value.
-func BoolP(b bool) *bool {
-	return &b
+	return nil
 }
 
-// IsTrue checks if the bool pointer is defined and true.
-func IsTrue(b *bool) bool {
-	return b != nil && *b
+// ToTraitMap accepts either v1.Traits or v1.IntegrationKitTraits and converts it to a map of traits.
+func ToTraitMap(traits interface{}) (map[string]map[string]interface{}, error) {
+	if err := AssertTraitsType(traits); err != nil {
+		return nil, err
+	}
+
+	data, err := json.Marshal(traits)
+	if err != nil {
+		return nil, err
+	}
+	traitMap := make(map[string]map[string]interface{})
+	if err = json.Unmarshal(data, &traitMap); err != nil {
+		return nil, err
+	}
+
+	return traitMap, nil
 }
 
-// IsNilOrTrue checks if the bool pointer is nil or true.
-// You can use it if the bool pointer is meant to be true by default.
-func IsNilOrTrue(b *bool) bool {
-	return b == nil || *b
+// ToPropertyMap accepts a trait and converts it to a map of trait properties.
+func ToPropertyMap(trait interface{}) (map[string]interface{}, error) {
+	data, err := json.Marshal(trait)
+	if err != nil {
+		return nil, err
+	}
+	propMap := make(map[string]interface{})
+	if err = json.Unmarshal(data, &propMap); err != nil {
+		return nil, err
+	}
+
+	return propMap, nil
 }
 
-// IsFalse checks if the bool pointer is defined and false.
-func IsFalse(b *bool) bool {
-	return b != nil && !*b
+// MigrateLegacyConfiguration moves up the legacy configuration in a trait to the new top-level properties.
+// Values of the new properties always take precedence over the ones from the legacy configuration
+// with the same property names.
+func MigrateLegacyConfiguration(trait map[string]interface{}) error {
+	if trait["configuration"] == nil {
+		return nil
+	}
+
+	if config, ok := trait["configuration"].(map[string]interface{}); ok {
+		// For traits that had the same property name "configuration",
+		// the property needs to be renamed to "config" to avoid naming conflicts
+		// (e.g. Knative trait).
+		if config["configuration"] != nil {
+			config["config"] = config["configuration"]
+			delete(config, "configuration")
+		}
+
+		for k, v := range config {
+			if trait[k] == nil {
+				trait[k] = v
+			}
+		}
+		delete(trait, "configuration")
+	} else {
+		return errors.Errorf(`unexpected type for "configuration" field: %v`, reflect.TypeOf(trait["configuration"]))
+	}
+
+	return nil
 }
 
-// IsNilOrFalse checks if the bool pointer is nil or false.
-// You can use it if the bool pointer is meant to be false by default.
-func IsNilOrFalse(b *bool) bool {
-	return b == nil || !*b
+// ToTrait unmarshals a map configuration to a target trait.
+func ToTrait(trait map[string]interface{}, target interface{}) error {
+	data, err := json.Marshal(trait)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, &target)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func getBuilderTask(tasks []v1.Task) *v1.BuilderTask {
+	for i, task := range tasks {
+		if task.Builder != nil {
+			return tasks[i].Builder
+		}
+	}
+	return nil
 }

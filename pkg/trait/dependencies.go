@@ -20,18 +20,18 @@ package trait
 import (
 	"github.com/scylladb/go-set/strset"
 
+	"k8s.io/utils/pointer"
+
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/metadata"
 	"github.com/apache/camel-k/pkg/util"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
 )
 
-// The Dependencies trait is internally used to automatically add runtime dependencies based on the
-// integration that the user wants to run.
-//
-// +camel-k:trait=dependencies.
 type dependenciesTrait struct {
-	BaseTrait `property:",squash"`
+	BaseTrait
+	traitv1.DependenciesTrait `property:",squash"`
 }
 
 func newDependenciesTrait() Trait {
@@ -41,7 +41,7 @@ func newDependenciesTrait() Trait {
 }
 
 func (t *dependenciesTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, nil
 	}
 

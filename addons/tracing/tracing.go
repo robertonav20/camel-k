@@ -18,8 +18,11 @@ limitations under the License.
 package tracing
 
 import (
+	"k8s.io/utils/pointer"
+
 	"github.com/apache/camel-k/addons/tracing/discovery"
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/trait"
 	"github.com/apache/camel-k/pkg/util"
 )
@@ -32,8 +35,8 @@ import (
 // The Tracing trait is disabled by default.
 //
 // +camel-k:trait=tracing.
-type tracingTrait struct {
-	trait.BaseTrait `property:",squash"`
+type Trait struct {
+	traitv1.Trait `property:",squash" json:",inline"`
 	// Enables automatic configuration of the trait, including automatic discovery of the tracing endpoint.
 	Auto *bool `property:"auto" json:"auto,omitempty"`
 	// The name of the service that publishes tracing data (defaults to the integration name)
@@ -44,6 +47,11 @@ type tracingTrait struct {
 	SamplerType *string `property:"sampler-type" json:"samplerType,omitempty"`
 	// The sampler specific param (default "1")
 	SamplerParam *string `property:"sampler-param" json:"samplerParam,omitempty"`
+}
+
+type tracingTrait struct {
+	trait.BaseTrait
+	Trait `property:",squash"`
 }
 
 const (
@@ -76,11 +84,11 @@ func NewTracingTrait() trait.Trait {
 }
 
 func (t *tracingTrait) Configure(e *trait.Environment) (bool, error) {
-	if trait.IsNilOrFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, false) {
 		return false, nil
 	}
 
-	if trait.IsNilOrTrue(t.Auto) {
+	if pointer.BoolDeref(t.Auto, true) {
 		if t.Endpoint == "" {
 			for _, locator := range discovery.TracingLocators {
 				endpoint, err := locator.FindEndpoint(e.Ctx, t.Client, t.L, e)

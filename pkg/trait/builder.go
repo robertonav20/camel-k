@@ -22,23 +22,18 @@ import (
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/pointer"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/builder"
 	mvn "github.com/apache/camel-k/pkg/util/maven"
 	"github.com/apache/camel-k/pkg/util/property"
 )
 
-// The builder trait is internally used to determine the best strategy to
-// build and configure IntegrationKits.
-//
-// +camel-k:trait=builder.
 type builderTrait struct {
-	BaseTrait `property:",squash"`
-	// Enable verbose logging on build components that support it (e.g. Kaniko build pod).
-	Verbose *bool `property:"verbose" json:"verbose,omitempty"`
-	// A list of properties to be provided to the build task
-	Properties []string `property:"properties" json:"properties,omitempty"`
+	BaseTrait
+	traitv1.BuilderTrait `property:",squash"`
 }
 
 func newBuilderTrait() Trait {
@@ -58,7 +53,7 @@ func (t *builderTrait) InfluencesKit() bool {
 }
 
 func (t *builderTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, nil
 	}
 

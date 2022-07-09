@@ -20,26 +20,184 @@ package trait
 import (
 	"testing"
 
+	"k8s.io/utils/pointer"
+
+	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
+
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBoolPointerFunctions(t *testing.T) {
-	trueP := BoolP(true)
-	falseP := BoolP(false)
+func TestToTraitMap(t *testing.T) {
+	traits := v1.Traits{
+		Container: &traitv1.ContainerTrait{
+			Trait: traitv1.Trait{
+				Enabled: pointer.Bool(true),
+				Configuration: configurationFromMap(t, map[string]interface{}{
+					"name": "test-container",
+					"port": 8082,
+				}),
+			},
+			Auto:            pointer.Bool(false),
+			Expose:          pointer.Bool(true),
+			Port:            8081,
+			PortName:        "http-8081",
+			ServicePort:     81,
+			ServicePortName: "http-81",
+		},
+		Service: &traitv1.ServiceTrait{
+			Trait: traitv1.Trait{
+				Enabled: pointer.Bool(true),
+			},
+		},
+		Addons: map[string]v1.AddonTrait{
+			"tracing": ToAddonTrait(t, map[string]interface{}{
+				"enabled": true,
+			}),
+		},
+	}
+	expected := map[string]map[string]interface{}{
+		"container": {
+			"enabled":         true,
+			"auto":            false,
+			"expose":          true,
+			"port":            float64(8081),
+			"portName":        "http-8081",
+			"servicePort":     float64(81),
+			"servicePortName": "http-81",
+			"configuration": map[string]interface{}{
+				"name": "test-container",
+				"port": float64(8082),
+			},
+		},
+		"service": {
+			"enabled": true,
+		},
+		"addons": {
+			"tracing": map[string]interface{}{
+				"enabled": true,
+			},
+		},
+	}
 
-	assert.True(t, IsTrue(trueP))
-	assert.False(t, IsTrue(falseP))
-	assert.False(t, IsTrue(nil))
+	traitMap, err := ToTraitMap(traits)
 
-	assert.True(t, IsNilOrTrue(trueP))
-	assert.False(t, IsNilOrTrue(falseP))
-	assert.True(t, IsNilOrTrue(nil))
+	assert.NoError(t, err)
+	assert.Equal(t, expected, traitMap)
+}
 
-	assert.False(t, IsFalse(trueP))
-	assert.True(t, IsFalse(falseP))
-	assert.False(t, IsFalse(nil))
+func TestToPropertyMap(t *testing.T) {
+	trait := traitv1.ContainerTrait{
+		Trait: traitv1.Trait{
+			Enabled: pointer.Bool(true),
+			Configuration: configurationFromMap(t, map[string]interface{}{
+				"name": "test-container",
+				"port": 8082,
+			}),
+		},
+		Auto:            pointer.Bool(false),
+		Expose:          pointer.Bool(true),
+		Port:            8081,
+		PortName:        "http-8081",
+		ServicePort:     81,
+		ServicePortName: "http-81",
+	}
+	expected := map[string]interface{}{
+		"enabled":         true,
+		"auto":            false,
+		"expose":          true,
+		"port":            float64(8081),
+		"portName":        "http-8081",
+		"servicePort":     float64(81),
+		"servicePortName": "http-81",
+		"configuration": map[string]interface{}{
+			"name": "test-container",
+			"port": float64(8082),
+		},
+	}
 
-	assert.False(t, IsNilOrFalse(trueP))
-	assert.True(t, IsNilOrFalse(falseP))
-	assert.True(t, IsNilOrFalse(nil))
+	propMap, err := ToPropertyMap(trait)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expected, propMap)
+}
+
+func TestMigrateLegacyConfiguration(t *testing.T) {
+	trait := map[string]interface{}{
+		"enabled":         true,
+		"auto":            false,
+		"port":            float64(8081),
+		"portName":        "http-8081",
+		"servicePortName": "http-81",
+		"configuration": map[string]interface{}{
+			"auto":        true,
+			"expose":      true,
+			"name":        "test-container",
+			"port":        float64(8082),
+			"servicePort": float64(81),
+		},
+	}
+	expected := map[string]interface{}{
+		"enabled":         true,
+		"auto":            false,
+		"port":            float64(8081),
+		"portName":        "http-8081",
+		"servicePortName": "http-81",
+		"expose":          true,
+		"name":            "test-container",
+		"servicePort":     float64(81),
+	}
+
+	err := MigrateLegacyConfiguration(trait)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expected, trait)
+}
+
+func TestMigrateLegacyConfiguration_invalidConfiguration(t *testing.T) {
+	trait := map[string]interface{}{
+		"enabled":       true,
+		"configuration": "It should not be a string!",
+	}
+
+	err := MigrateLegacyConfiguration(trait)
+
+	assert.Error(t, err)
+}
+
+func TestToTrait(t *testing.T) {
+	config := map[string]interface{}{
+		"enabled":         true,
+		"auto":            false,
+		"expose":          true,
+		"port":            8081,
+		"portName":        "http-8081",
+		"servicePort":     81,
+		"servicePortName": "http-81",
+		"configuration": map[string]interface{}{
+			"name": "test-container",
+			"port": float64(8082),
+		},
+	}
+	expected := traitv1.ContainerTrait{
+		Trait: traitv1.Trait{
+			Enabled: pointer.Bool(true),
+			Configuration: configurationFromMap(t, map[string]interface{}{
+				"name": "test-container",
+				"port": 8082,
+			}),
+		},
+		Auto:            pointer.Bool(false),
+		Expose:          pointer.Bool(true),
+		Port:            8081,
+		PortName:        "http-8081",
+		ServicePort:     81,
+		ServicePortName: "http-81",
+	}
+
+	trait := traitv1.ContainerTrait{}
+	err := ToTrait(config, &trait)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expected, trait)
 }

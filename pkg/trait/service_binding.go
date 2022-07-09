@@ -18,11 +18,10 @@ limitations under the License.
 package trait
 
 import (
-	"github.com/apache/camel-k/pkg/util/camel"
-	"github.com/apache/camel-k/pkg/util/reference"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/utils/pointer"
 
 	sb "github.com/redhat-developer/service-binding-operator/apis/binding/v1alpha1"
 	"github.com/redhat-developer/service-binding-operator/pkg/client/kubernetes"
@@ -33,16 +32,14 @@ import (
 	"github.com/redhat-developer/service-binding-operator/pkg/reconcile/pipeline/handler/naming"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
+	"github.com/apache/camel-k/pkg/util/camel"
+	"github.com/apache/camel-k/pkg/util/reference"
 )
 
-// The Service Binding trait allows users to connect to Services in Kubernetes:
-// https://github.com/k8s-service-bindings/spec#service-binding
-// As the specification is still evolving this is subject to change
-// +camel-k:trait=service-binding.
 type serviceBindingTrait struct {
-	BaseTrait `property:",squash"`
-	// List of Services in the form [[apigroup/]version:]kind:[namespace/]name
-	Services []string `property:"services" json:"services,omitempty"`
+	BaseTrait
+	traitv1.ServiceBindingTrait `property:",squash"`
 }
 
 func newServiceBindingTrait() Trait {
@@ -52,7 +49,7 @@ func newServiceBindingTrait() Trait {
 }
 
 func (t *serviceBindingTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, nil
 	}
 

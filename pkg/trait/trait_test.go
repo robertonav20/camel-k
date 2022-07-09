@@ -28,11 +28,12 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util/camel"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
-	"github.com/apache/camel-k/pkg/util/test"
 )
 
 const (
@@ -79,10 +80,6 @@ func TestOpenShiftTraitsWithWeb(t *testing.T) {
 
 func TestOpenShiftTraitsWithWebAndConfig(t *testing.T) {
 	env := createTestEnv(t, v1.IntegrationPlatformClusterOpenShift, "from('netty-http:http').to('log:info')")
-	env.Integration.Spec.Traits = make(map[string]v1.TraitSpec)
-	env.Integration.Spec.Traits["service"] = test.TraitSpecFromMap(t, map[string]interface{}{
-		"port": 7071,
-	})
 	res := processTestEnv(t, env)
 	assert.NotNil(t, env.GetTrait("service"))
 	assert.NotNil(t, env.GetTrait("route"))
@@ -93,11 +90,11 @@ func TestOpenShiftTraitsWithWebAndConfig(t *testing.T) {
 
 func TestOpenShiftTraitsWithWebAndDisabledTrait(t *testing.T) {
 	env := createTestEnv(t, v1.IntegrationPlatformClusterOpenShift, "from('netty-http:http').to('log:info')")
-	env.Integration.Spec.Traits = make(map[string]v1.TraitSpec)
-	env.Integration.Spec.Traits["service"] = test.TraitSpecFromMap(t, map[string]interface{}{
-		"enabled": false,
-		"port":    7071,
-	})
+	env.Integration.Spec.Traits.Service = &traitv1.ServiceTrait{
+		Trait: traitv1.Trait{
+			Enabled: pointer.Bool(false),
+		},
+	}
 	res := processTestEnv(t, env)
 	assert.Nil(t, env.GetTrait("service"))
 	assert.Nil(t, env.GetTrait("route")) // No route without service
@@ -139,50 +136,29 @@ func TestKubernetesTraitsWithWeb(t *testing.T) {
 	}))
 }
 
-func TestTraitDecode(t *testing.T) {
-	env := createTestEnv(t, v1.IntegrationPlatformClusterOpenShift, "")
-	env.Integration.Spec.Traits = make(map[string]v1.TraitSpec)
-	svcTrait := test.TraitSpecFromMap(t, map[string]interface{}{
-		"enabled": false,
-		"port":    7071,
-		"cippa":   "lippa",
-	})
-	env.Integration.Spec.Traits["service"] = svcTrait
-
-	ctr, _ := newContainerTrait().(*containerTrait)
-	err := decodeTraitSpec(&svcTrait, ctr)
-
-	assert.Nil(t, err)
-	assert.Equal(t, 7071, ctr.Port)
-	assert.NotNil(t, ctr.Enabled)
-	assert.Equal(t, false, *ctr.Enabled)
-}
-
 func TestTraitHierarchyDecode(t *testing.T) {
 	env := createTestEnv(t, v1.IntegrationPlatformClusterOpenShift, "")
 
-	env.Platform.Spec.Traits = make(map[string]v1.TraitSpec)
-	env.Platform.Spec.Traits["knative-service"] = test.TraitSpecFromMap(t, map[string]interface{}{
-		"enabled":           false,
-		"minScale":          1,
-		"maxScale":          10,
-		"autoscalingTarget": 15,
-	})
+	env.Platform.Spec.Traits.KnativeService = &traitv1.KnativeServiceTrait{
+		Trait: traitv1.Trait{
+			Enabled: pointer.Bool(false),
+		},
+		MinScale: pointer.Int(1),
+		MaxScale: pointer.Int(10),
+		Target:   pointer.Int(15),
+	}
 	env.Platform.ResyncStatusFullConfig()
 
-	env.IntegrationKit.Spec.Traits = make(map[string]v1.TraitSpec)
-	env.IntegrationKit.Spec.Traits["knative-service"] = test.TraitSpecFromMap(t, map[string]interface{}{
-		"enabled":  true,
-		"minScale": 5,
-	})
-
-	env.Integration.Spec.Traits = make(map[string]v1.TraitSpec)
-	env.Integration.Spec.Traits["knative-service"] = test.TraitSpecFromMap(t, map[string]interface{}{
-		"maxScale": 20,
-	})
+	env.Integration.Spec.Traits.KnativeService = &traitv1.KnativeServiceTrait{
+		Trait: traitv1.Trait{
+			Enabled: pointer.Bool(true),
+		},
+		MinScale: pointer.Int(5),
+		MaxScale: pointer.Int(20),
+	}
 
 	c := NewTraitTestCatalog()
-	err := c.configure(env)
+	err := c.Configure(env)
 
 	assert.Nil(t, err)
 

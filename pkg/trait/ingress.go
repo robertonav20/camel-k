@@ -24,28 +24,23 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networking "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 )
 
-// The Ingress trait can be used to expose the service associated with the integration
-// to the outside world with a Kubernetes Ingress.
-//
-// It's enabled by default whenever a Service is added to the integration (through the `service` trait).
-//
-// +camel-k:trait=ingress.
 type ingressTrait struct {
-	BaseTrait `property:",squash"`
-	// **Required**. To configure the host exposed by the ingress.
-	Host string `property:"host" json:"host,omitempty"`
-	// To automatically add an ingress whenever the integration uses a HTTP endpoint consumer.
-	Auto *bool `property:"auto" json:"auto,omitempty"`
+	BaseTrait
+	traitv1.IngressTrait `property:",squash"`
 }
 
 func newIngressTrait() Trait {
 	return &ingressTrait{
 		BaseTrait: NewBaseTrait("ingress", 2400),
-		Host:      "",
+		IngressTrait: traitv1.IngressTrait{
+			Host: "",
+		},
 	}
 }
 
@@ -55,7 +50,7 @@ func (t *ingressTrait) IsAllowedInProfile(profile v1.TraitProfile) bool {
 }
 
 func (t *ingressTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		e.Integration.Status.SetCondition(
 			v1.IntegrationConditionExposureAvailable,
 			corev1.ConditionFalse,
@@ -69,7 +64,7 @@ func (t *ingressTrait) Configure(e *Environment) (bool, error) {
 		return false, nil
 	}
 
-	if IsNilOrTrue(t.Auto) {
+	if pointer.BoolDeref(t.Auto, true) {
 		hasService := e.Resources.GetUserServiceForIntegration(e.Integration) != nil
 		hasHost := t.Host != ""
 		enabled := hasService && hasHost

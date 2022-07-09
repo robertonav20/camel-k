@@ -22,7 +22,10 @@ import (
 
 	"github.com/pkg/errors"
 
+	"k8s.io/utils/pointer"
+
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util"
 	"github.com/apache/camel-k/pkg/util/dsl"
 )
@@ -30,7 +33,8 @@ import (
 const flowsInternalSourceName = "camel-k-embedded-flow.yaml"
 
 type initTrait struct {
-	BaseTrait `property:",squash"`
+	BaseTrait
+	traitv1.Trait `property:",squash"`
 }
 
 func NewInitTrait() Trait {
@@ -40,7 +44,7 @@ func NewInitTrait() Trait {
 }
 
 func (t *initTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, errors.New("trait init cannot be disabled")
 	}
 

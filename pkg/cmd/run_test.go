@@ -26,10 +26,13 @@ import (
 	"testing"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/trait"
 	"github.com/apache/camel-k/pkg/util/test"
+
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+	"k8s.io/utils/pointer"
 )
 
 const (
@@ -366,71 +369,25 @@ func TestConfigureTraits(t *testing.T) {
 	}
 	catalog := trait.NewCatalog(client)
 
-	traits, err := configureTraits(runCmdOptions.Traits, catalog)
+	traits := v1.Traits{}
+	err = configureTraits(runCmdOptions.Traits, &traits, catalog)
 
 	assert.Nil(t, err)
-	assert.Len(t, traits, 5)
-	assertTraitConfiguration(t, traits, "affinity", `{"podAffinity":false}`)
-	assertTraitConfiguration(t, traits, "container", `{"probesEnabled":false}`)
-	assertTraitConfiguration(t, traits, "environment", `{"containerMeta":false}`)
-	assertTraitConfiguration(t, traits, "jvm", `{"printCommand":false}`)
-	assertTraitConfiguration(t, traits, "prometheus", `{"podMonitor":false}`)
-}
-
-type customTrait struct {
-	trait.BaseTrait `property:",squash"`
-	// SimpleMap
-	SimpleMap  map[string]string            `property:"simple-map" json:"simpleMap,omitempty"`
-	DoubleMap  map[string]map[string]string `property:"double-map" json:"doubleMap,omitempty"`
-	SliceOfMap []map[string]string          `property:"slice-of-map" json:"sliceOfMap,omitempty"`
-}
-
-func (c customTrait) Configure(environment *trait.Environment) (bool, error) {
-	panic("implement me")
-}
-func (c customTrait) Apply(environment *trait.Environment) error {
-	panic("implement me")
-}
-
-var _ trait.Trait = &customTrait{}
-
-type customTraitFinder struct {
-}
-
-func (finder customTraitFinder) GetTrait(id string) trait.Trait {
-	if id == "custom" {
-		return &customTrait{}
-	}
-	return nil
-}
-
-func TestTraitsNestedConfig(t *testing.T) {
-	runCmdOptions, rootCmd, _ := initializeRunCmdOptions(t)
-	_, err := test.ExecuteCommand(rootCmd, "run",
-		"--trait", "custom.simple-map.a=b",
-		"--trait", "custom.simple-map.y=z",
-		"--trait", "custom.double-map.m.n=q",
-		"--trait", "custom.double-map.m.o=w",
-		"--trait", "custom.slice-of-map[0].f=g",
-		"--trait", "custom.slice-of-map[3].f=h",
-		"--trait", "custom.slice-of-map[2].f=i",
-		"example.js")
-	// We will have an error because those traits are not existing
-	// however we want to test how those properties are mapped in the configuration
-	assert.NotNil(t, err)
-	catalog := &customTraitFinder{}
-	traits, err := configureTraits(runCmdOptions.Traits, catalog)
-
+	traitMap, err := trait.ToTraitMap(traits)
 	assert.Nil(t, err)
-	assert.Len(t, traits, 1)
-	assertTraitConfiguration(t, traits, "custom", `{"simpleMap":{"a":"b","y":"z"},"doubleMap":{"m":{"n":"q","o":"w"}},"sliceOfMap":[{"f":"g"},null,{"f":"i"},{"f":"h"}]}`)
+	assert.Len(t, traitMap, 5)
+	assertTraitConfiguration(t, traits.Affinity, &traitv1.AffinityTrait{PodAffinity: pointer.Bool(false)})
+	assertTraitConfiguration(t, traits.Container, &traitv1.ContainerTrait{DeprecatedProbesEnabled: pointer.Bool(false)})
+	assertTraitConfiguration(t, traits.Environment, &traitv1.EnvironmentTrait{ContainerMeta: pointer.Bool(false)})
+	assertTraitConfiguration(t, traits.JVM, &traitv1.JVMTrait{PrintCommand: pointer.Bool(false)})
+	assertTraitConfiguration(t, traits.Prometheus, &traitv1.PrometheusTrait{PodMonitor: pointer.Bool(false)})
 }
 
-func assertTraitConfiguration(t *testing.T, traits map[string]v1.TraitSpec, trait string, expected string) {
+func assertTraitConfiguration(t *testing.T, trait interface{}, expected interface{}) {
 	t.Helper()
 
-	assert.Contains(t, traits, trait)
-	assert.Equal(t, expected, string(traits[trait].Configuration.RawMessage))
+	assert.NotNil(t, trait)
+	assert.Equal(t, expected, trait)
 }
 
 func TestRunUseFlowsFlag(t *testing.T) {
@@ -617,6 +574,7 @@ spec:
       extends RouteBuilder {\n  @Override\n  public void configure() throws Exception
       {\n\t  from(\"timer:tick\")\n        .log(\"Hello Camel K!\");\n  }\n}\n"
     name: %s
+  traits: {}
 status: {}
 `, fileName, fileName), output)
 }
@@ -650,13 +608,11 @@ spec:
     name: %s
   traits:
     mount:
-      configuration:
-        configs:
-        - configmap:my-cm
+      configs:
+      - configmap:my-cm
     service-binding:
-      configuration:
-        services:
-        - my-service-binding
+      services:
+      - my-service-binding
 status: {}
 `, fileName, fileName), output)
 }

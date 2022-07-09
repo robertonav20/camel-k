@@ -26,23 +26,19 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util/camel"
 	"github.com/apache/camel-k/pkg/util/maven"
 	"github.com/apache/camel-k/pkg/util/property"
 )
 
-// The Camel trait can be used to configure versions of Apache Camel K runtime and related libraries, it cannot be disabled.
-//
-// +camel-k:trait=camel.
 type camelTrait struct {
-	BaseTrait `property:",squash"`
-	// The camel-k-runtime version to use for the integration. It overrides the default version set in the Integration Platform.
-	RuntimeVersion string `property:"runtime-version" json:"runtimeVersion,omitempty"`
-	// A list of properties to be provided to the Integration runtime
-	Properties []string `property:"properties" json:"properties,omitempty"`
+	BaseTrait
+	traitv1.CamelTrait `property:",squash"`
 }
 
 func newCamelTrait() Trait {
@@ -52,7 +48,7 @@ func newCamelTrait() Trait {
 }
 
 func (t *camelTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, errors.New("trait camel cannot be disabled")
 	}
 

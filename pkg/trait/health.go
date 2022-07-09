@@ -23,8 +23,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/pointer"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util"
 )
 
@@ -33,50 +35,18 @@ const (
 	defaultReadinessProbePath = "/q/health/ready"
 )
 
-// The health trait is responsible for configuring the health probes on the integration container.
-//
-// It's disabled by default.
-//
-// +camel-k:trait=health.
 type healthTrait struct {
-	BaseTrait `property:",squash"`
-
-	// Configures the liveness probe for the integration container (default `false`).
-	LivenessProbeEnabled *bool `property:"liveness-probe-enabled" json:"livenessProbeEnabled,omitempty"`
-	// Scheme to use when connecting to the liveness probe (default `HTTP`).
-	LivenessScheme string `property:"liveness-scheme" json:"livenessScheme,omitempty"`
-	// Number of seconds after the container has started before the liveness probe is initiated.
-	LivenessInitialDelay int32 `property:"liveness-initial-delay" json:"livenessInitialDelay,omitempty"`
-	// Number of seconds after which the liveness probe times out.
-	LivenessTimeout int32 `property:"liveness-timeout" json:"livenessTimeout,omitempty"`
-	// How often to perform the liveness probe.
-	LivenessPeriod int32 `property:"liveness-period" json:"livenessPeriod,omitempty"`
-	// Minimum consecutive successes for the liveness probe to be considered successful after having failed.
-	LivenessSuccessThreshold int32 `property:"liveness-success-threshold" json:"livenessSuccessThreshold,omitempty"`
-	// Minimum consecutive failures for the liveness probe to be considered failed after having succeeded.
-	LivenessFailureThreshold int32 `property:"liveness-failure-threshold" json:"livenessFailureThreshold,omitempty"`
-
-	// Configures the readiness probe for the integration container (default `true`).
-	ReadinessProbeEnabled *bool `property:"readiness-probe-enabled" json:"readinessProbeEnabled,omitempty"`
-	// Scheme to use when connecting to the readiness probe (default `HTTP`).
-	ReadinessScheme string `property:"readiness-scheme" json:"readinessScheme,omitempty"`
-	// Number of seconds after the container has started before the readiness probe is initiated.
-	ReadinessInitialDelay int32 `property:"readiness-initial-delay" json:"readinessInitialDelay,omitempty"`
-	// Number of seconds after which the readiness probe times out.
-	ReadinessTimeout int32 `property:"readiness-timeout" json:"readinessTimeout,omitempty"`
-	// How often to perform the readiness probe.
-	ReadinessPeriod int32 `property:"readiness-period" json:"readinessPeriod,omitempty"`
-	// Minimum consecutive successes for the readiness probe to be considered successful after having failed.
-	ReadinessSuccessThreshold int32 `property:"readiness-success-threshold" json:"readinessSuccessThreshold,omitempty"`
-	// Minimum consecutive failures for the readiness probe to be considered failed after having succeeded.
-	ReadinessFailureThreshold int32 `property:"readiness-failure-threshold" json:"readinessFailureThreshold,omitempty"`
+	BaseTrait
+	traitv1.HealthTrait `property:",squash"`
 }
 
 func newHealthTrait() Trait {
 	return &healthTrait{
-		BaseTrait:       NewBaseTrait("health", 1700),
-		LivenessScheme:  string(corev1.URISchemeHTTP),
-		ReadinessScheme: string(corev1.URISchemeHTTP),
+		BaseTrait: NewBaseTrait("health", 1700),
+		HealthTrait: traitv1.HealthTrait{
+			LivenessScheme:  string(corev1.URISchemeHTTP),
+			ReadinessScheme: string(corev1.URISchemeHTTP),
+		},
 	}
 }
 
@@ -85,12 +55,12 @@ func (t *healthTrait) Configure(e *Environment) (bool, error) {
 		return false, nil
 	}
 
-	if IsNilOrFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, false) {
 		// Source the configuration from the container trait to maintain backward compatibility.
 		// This can be removed once the deprecated properties related to health probes are actually
 		// removed from the container trait.
 		if trait := e.Catalog.GetTrait(containerTraitID); trait != nil {
-			if container, ok := trait.(*containerTrait); ok && IsNilOrTrue(container.Enabled) && IsTrue(container.DeprecatedProbesEnabled) {
+			if container, ok := trait.(*containerTrait); ok && pointer.BoolDeref(container.Enabled, true) && pointer.BoolDeref(container.DeprecatedProbesEnabled, false) {
 				config, err := json.Marshal(container)
 				if err != nil {
 					return false, err
@@ -99,9 +69,9 @@ func (t *healthTrait) Configure(e *Environment) (bool, error) {
 				if err != nil {
 					return false, err
 				}
-				t.Enabled = BoolP(true)
-				t.LivenessProbeEnabled = BoolP(true)
-				t.ReadinessProbeEnabled = BoolP(true)
+				t.Enabled = pointer.Bool(true)
+				t.LivenessProbeEnabled = pointer.Bool(true)
+				t.ReadinessProbeEnabled = pointer.Bool(true)
 				return true, err
 			}
 		}
@@ -123,7 +93,7 @@ func (t *healthTrait) Apply(e *Environment) error {
 		return nil
 	}
 
-	if IsNilOrFalse(t.LivenessProbeEnabled) && IsFalse(t.ReadinessProbeEnabled) {
+	if !pointer.BoolDeref(t.LivenessProbeEnabled, false) && !pointer.BoolDeref(t.ReadinessProbeEnabled, true) {
 		return nil
 	}
 
@@ -140,10 +110,10 @@ func (t *healthTrait) Apply(e *Environment) error {
 		port = &p
 	}
 
-	if IsTrue(t.LivenessProbeEnabled) {
+	if pointer.BoolDeref(t.LivenessProbeEnabled, false) {
 		container.LivenessProbe = t.newLivenessProbe(port, defaultLivenessProbePath)
 	}
-	if IsNilOrTrue(t.ReadinessProbeEnabled) {
+	if pointer.BoolDeref(t.ReadinessProbeEnabled, true) {
 		container.ReadinessProbe = t.newReadinessProbe(port, defaultReadinessProbePath)
 	}
 

@@ -23,35 +23,22 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/batch/v1beta1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/pointer"
 
 	serving "knative.dev/serving/pkg/apis/serving/v1"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
 	utilResource "github.com/apache/camel-k/pkg/util/resource"
 )
 
-// The Mount trait can be used to configure volumes mounted on the Integration Pods.
-//
-// +camel-k:trait=mount
-// nolint: tagliatelle
 type mountTrait struct {
-	BaseTrait `property:",squash"`
-	// A list of configuration pointing to configmap/secret.
-	// The configuration are expected to be UTF-8 resources as they are processed by runtime Camel Context and tried to be parsed as property files.
-	// They are also made available on the classpath in order to ease their usage directly from the Route.
-	// Syntax: [configmap|secret]:name[/key], where name represents the resource name and key optionally represents the resource key to be filtered
-	Configs []string `property:"configs" json:"configs,omitempty"`
-	// A list of resources (text or binary content) pointing to configmap/secret.
-	// The resources are expected to be any resource type (text or binary content).
-	// The destination path can be either a default location or any path specified by the user.
-	// Syntax: [configmap|secret]:name[/key][@path], where name represents the resource name, key optionally represents the resource key to be filtered and path represents the destination path
-	Resources []string `property:"resources" json:"resources,omitempty"`
-	// A list of Persistent Volume Claims to be mounted. Syntax: [pvcname:/container/path]
-	Volumes []string `property:"volumes" json:"volumes,omitempty"`
+	BaseTrait
+	traitv1.MountTrait `property:",squash"`
 }
 
 func newMountTrait() Trait {
@@ -62,7 +49,7 @@ func newMountTrait() Trait {
 }
 
 func (t *mountTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, nil
 	}
 
@@ -118,7 +105,7 @@ func (t *mountTrait) Apply(e *Environment) error {
 	}
 
 	// CronJob
-	if err := e.Resources.VisitCronJobE(func(cron *v1beta1.CronJob) error {
+	if err := e.Resources.VisitCronJobE(func(cron *batchv1.CronJob) error {
 		volumes = &cron.Spec.JobTemplate.Spec.Template.Spec.Volumes
 		visited = true
 		return nil

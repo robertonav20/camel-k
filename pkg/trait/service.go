@@ -20,24 +20,17 @@ package trait
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/metadata"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
 )
 
-// The Service trait exposes the integration with a Service resource so that it can be accessed by other applications
-// (or integrations) in the same namespace.
-//
-// It's enabled by default if the integration depends on a Camel component that can expose a HTTP endpoint.
-//
-// +camel-k:trait=service.
 type serviceTrait struct {
-	BaseTrait `property:",squash"`
-	// To automatically detect from the code if a Service needs to be created.
-	Auto *bool `property:"auto" json:"auto,omitempty"`
-	// Enable Service to be exposed as NodePort (default `false`).
-	NodePort *bool `property:"node-port" json:"nodePort,omitempty"`
+	BaseTrait
+	traitv1.ServiceTrait `property:",squash"`
 }
 
 const serviceTraitID = "service"
@@ -55,7 +48,7 @@ func (t *serviceTrait) IsAllowedInProfile(profile v1.TraitProfile) bool {
 }
 
 func (t *serviceTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		e.Integration.Status.SetCondition(
 			v1.IntegrationConditionServiceAvailable,
 			corev1.ConditionFalse,
@@ -70,7 +63,7 @@ func (t *serviceTrait) Configure(e *Environment) (bool, error) {
 		return false, nil
 	}
 
-	if IsNilOrTrue(t.Auto) {
+	if pointer.BoolDeref(t.Auto, true) {
 		sources, err := kubernetes.ResolveIntegrationSources(e.Ctx, t.Client, e.Integration, e.Resources)
 		if err != nil {
 			e.Integration.Status.SetCondition(
@@ -105,7 +98,7 @@ func (t *serviceTrait) Apply(e *Environment) error {
 	if svc == nil {
 		svc = getServiceFor(e)
 
-		if IsTrue(t.NodePort) {
+		if pointer.BoolDeref(t.NodePort, false) {
 			svc.Spec.Type = corev1.ServiceTypeNodePort
 		}
 	}

@@ -20,26 +20,18 @@ package trait
 import (
 	"os"
 
+	"k8s.io/utils/pointer"
+
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util/camel"
 	"github.com/apache/camel-k/pkg/util/defaults"
 	"github.com/apache/camel-k/pkg/util/envvar"
 	"github.com/apache/camel-k/pkg/util/property"
 )
 
-// The environment trait is used internally to inject standard environment variables in the integration container,
-// such as `NAMESPACE`, `POD_NAME` and others.
-//
-// +camel-k:trait=environment.
 type environmentTrait struct {
-	BaseTrait `property:",squash"`
-	// Enables injection of `NAMESPACE` and `POD_NAME` environment variables (default `true`)
-	ContainerMeta *bool `property:"container-meta" json:"containerMeta,omitempty"`
-	// Propagates the `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` environment variables (default `true`)
-	HTTPProxy *bool `property:"http-proxy" json:"httpProxy,omitempty"`
-	// A list of environment variables to be added to the integration container.
-	// The syntax is KEY=VALUE, e.g., `MY_VAR="my value"`.
-	// These take precedence over the previously defined environment variables.
-	Vars []string `property:"vars" json:"vars,omitempty"`
+	BaseTrait
+	traitv1.EnvironmentTrait `property:",squash"`
 }
 
 const (
@@ -61,13 +53,15 @@ const (
 
 func newEnvironmentTrait() Trait {
 	return &environmentTrait{
-		BaseTrait:     NewBaseTrait("environment", 800),
-		ContainerMeta: BoolP(true),
+		BaseTrait: NewBaseTrait("environment", 800),
+		EnvironmentTrait: traitv1.EnvironmentTrait{
+			ContainerMeta: pointer.Bool(true),
+		},
 	}
 }
 
 func (t *environmentTrait) Configure(e *Environment) (bool, error) {
-	if IsNilOrTrue(t.Enabled) {
+	if pointer.BoolDeref(t.Enabled, true) {
 		return e.IntegrationInRunningPhases(), nil
 	}
 
@@ -83,12 +77,12 @@ func (t *environmentTrait) Apply(e *Environment) error {
 	envvar.SetVal(&e.EnvVars, envVarMountPathConfigMaps, camel.ConfigConfigmapsMountPath)
 	envvar.SetVal(&e.EnvVars, envVarMountPathSecrets, camel.ConfigSecretsMountPath)
 
-	if IsNilOrTrue(t.ContainerMeta) {
+	if pointer.BoolDeref(t.ContainerMeta, true) {
 		envvar.SetValFrom(&e.EnvVars, envVarNamespace, "metadata.namespace")
 		envvar.SetValFrom(&e.EnvVars, envVarPodName, "metadata.name")
 	}
 
-	if IsNilOrTrue(t.HTTPProxy) {
+	if pointer.BoolDeref(t.HTTPProxy, true) {
 		if HTTPProxy, ok := os.LookupEnv("HTTP_PROXY"); ok {
 			envvar.SetVal(&e.EnvVars, "HTTP_PROXY", HTTPProxy)
 		}

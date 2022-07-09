@@ -27,7 +27,7 @@ import (
 	"github.com/pkg/errors"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/batch/v1beta1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -115,9 +115,7 @@ func NewBaseTrait(id string, order int) BaseTrait {
 
 // BaseTrait is the root trait with noop implementations for hooks.
 type BaseTrait struct {
-	TraitID ID `json:"-"`
-	// Can be used to enable or disable a trait. All traits share this common property.
-	Enabled        *bool         `property:"enabled" json:"enabled,omitempty"`
+	TraitID        ID            `json:"-"`
 	Client         client.Client `json:"-"`
 	ExecutionOrder int           `json:"-"`
 	L              log.Logger    `json:"-"`
@@ -326,7 +324,7 @@ func (e *Environment) GetIntegrationPodSpec() *corev1.PodSpec {
 	}
 
 	// Cronjob
-	cronJob := e.Resources.GetCronJob(func(c *v1beta1.CronJob) bool {
+	cronJob := e.Resources.GetCronJob(func(c *batchv1.CronJob) bool {
 		return c.Name == e.Integration.Name
 	})
 	if cronJob != nil {

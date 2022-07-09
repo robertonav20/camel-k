@@ -20,17 +20,20 @@ package tracing
 import (
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
+
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
 	"github.com/apache/camel-k/pkg/trait"
 	"github.com/apache/camel-k/pkg/util/camel"
+
 	"github.com/stretchr/testify/assert"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestTracingTraitOnQuarkus(t *testing.T) {
 	e := createEnvironment(t, camel.QuarkusCatalog)
 	tracing := NewTracingTrait()
-	tracing.(*tracingTrait).Enabled = trait.BoolP(true)
+	tracing.(*tracingTrait).Enabled = pointer.Bool(true)
 	tracing.(*tracingTrait).Endpoint = "http://endpoint3"
 	ok, err := tracing.Configure(e)
 	assert.Nil(t, err)

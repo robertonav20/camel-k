@@ -24,19 +24,20 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
-func TestConfigureGarbageCollectorTraitDoesSucceed(t *testing.T) {
-	gcTrait, environment := createNominalGarbageCollectorTest()
+func TestConfigureGCTraitDoesSucceed(t *testing.T) {
+	gcTrait, environment := createNominalGCTest()
 	configured, err := gcTrait.Configure(environment)
 
 	assert.True(t, configured)
 	assert.Nil(t, err)
 }
 
-func TestConfigureDisabledGarbageCollectorTraitDoesNotSucceed(t *testing.T) {
-	gcTrait, environment := createNominalGarbageCollectorTest()
-	gcTrait.Enabled = BoolP(false)
+func TestConfigureDisabledGCTraitDoesNotSucceed(t *testing.T) {
+	gcTrait, environment := createNominalGCTest()
+	gcTrait.Enabled = pointer.Bool(false)
 
 	configured, err := gcTrait.Configure(environment)
 
@@ -45,7 +46,7 @@ func TestConfigureDisabledGarbageCollectorTraitDoesNotSucceed(t *testing.T) {
 }
 
 func TestApplyGarbageCollectorTraitFirstGenerationDoesSucceed(t *testing.T) {
-	gcTrait, environment := createNominalGarbageCollectorTest()
+	gcTrait, environment := createNominalGCTest()
 
 	err := gcTrait.Apply(environment)
 
@@ -55,7 +56,7 @@ func TestApplyGarbageCollectorTraitFirstGenerationDoesSucceed(t *testing.T) {
 }
 
 func TestApplyGarbageCollectorTraitNextGenerationDoesSucceed(t *testing.T) {
-	gcTrait, environment := createNominalGarbageCollectorTest()
+	gcTrait, environment := createNominalGCTest()
 	environment.Integration.Generation = 2
 
 	err := gcTrait.Apply(environment)
@@ -65,8 +66,8 @@ func TestApplyGarbageCollectorTraitNextGenerationDoesSucceed(t *testing.T) {
 	assert.Len(t, environment.PostActions, 1)
 }
 
-func TestApplyGarbageCollectorTraitDuringInitializationPhaseSkipPostActions(t *testing.T) {
-	gcTrait, environment := createNominalGarbageCollectorTest()
+func TestApplyGCTraitDuringInitializationPhaseSkipPostActions(t *testing.T) {
+	gcTrait, environment := createNominalGCTest()
 	environment.Integration.Status.Phase = v1.IntegrationPhaseInitialization
 
 	err := gcTrait.Apply(environment)
@@ -76,9 +77,9 @@ func TestApplyGarbageCollectorTraitDuringInitializationPhaseSkipPostActions(t *t
 	assert.Len(t, environment.PostActions, 0)
 }
 
-func createNominalGarbageCollectorTest() (*garbageCollectorTrait, *Environment) {
-	trait, _ := newGarbageCollectorTrait().(*garbageCollectorTrait)
-	trait.Enabled = BoolP(true)
+func createNominalGCTest() (*gcTrait, *Environment) {
+	trait, _ := newGCTrait().(*gcTrait)
+	trait.Enabled = pointer.Bool(true)
 
 	environment := &Environment{
 		Catalog: NewCatalog(nil),

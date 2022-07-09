@@ -25,6 +25,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"path"
 	"sort"
@@ -98,27 +99,28 @@ func ComputeForIntegration(integration *v1.Integration) (string, error) {
 	}
 
 	// Integration traits
-	for _, name := range sortedTraitSpecMapKeys(integration.Spec.Traits) {
-		if _, err := hash.Write([]byte(name + "[")); err != nil {
-			return "", err
-		}
-		spec, err := json.Marshal(integration.Spec.Traits[name].Configuration)
-		if err != nil {
-			return "", err
-		}
-		trait := make(map[string]interface{})
-		err = json.Unmarshal(spec, &trait)
-		if err != nil {
-			return "", err
-		}
-		for _, prop := range util.SortedMapKeys(trait) {
-			val := trait[prop]
-			if _, err := hash.Write([]byte(fmt.Sprintf("%s=%v,", prop, val))); err != nil {
+	// Calculation logic prior to 1.10.0 (the new Traits API schema) is maintained
+	// in order to keep consistency in the digest calculated from the same set of
+	// Trait configurations for backward compatibility.
+	traitsMap, err := toMap(integration.Spec.Traits)
+	if err != nil {
+		return "", err
+	}
+	for _, name := range sortedTraitsMapKeys(traitsMap) {
+		if name != "addons" {
+			if err := computeForTrait(hash, name, traitsMap[name]); err != nil {
 				return "", err
 			}
-		}
-		if _, err := hash.Write([]byte("]")); err != nil {
-			return "", err
+		} else {
+			// Addons
+			addons := traitsMap["addons"]
+			for _, name := range util.SortedMapKeys(addons) {
+				if addon, ok := addons[name].(map[string]interface{}); ok {
+					if err := computeForTrait(hash, name, addon); err != nil {
+						return "", err
+					}
+				}
+			}
 		}
 	}
 	// Integration traits as annotations
@@ -132,6 +134,53 @@ func ComputeForIntegration(integration *v1.Integration) (string, error) {
 	// Add a letter at the beginning and use URL safe encoding
 	digest := "v" + base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
 	return digest, nil
+}
+
+func computeForTrait(hash hash.Hash, name string, trait map[string]interface{}) error {
+	if _, err := hash.Write([]byte(name + "[")); err != nil {
+		return err
+	}
+	// hash legacy configuration first
+	if trait["configuration"] != nil {
+		if config, ok := trait["configuration"].(map[string]interface{}); ok {
+			if err := computeForTraitProps(hash, config); err != nil {
+				return err
+			}
+		}
+		delete(trait, "configuration")
+	}
+	if err := computeForTraitProps(hash, trait); err != nil {
+		return err
+	}
+	if _, err := hash.Write([]byte("]")); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func computeForTraitProps(hash hash.Hash, props map[string]interface{}) error {
+	for _, prop := range util.SortedMapKeys(props) {
+		val := props[prop]
+		if _, err := hash.Write([]byte(fmt.Sprintf("%s=%v,", prop, val))); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func toMap(traits v1.Traits) (map[string]map[string]interface{}, error) {
+	data, err := json.Marshal(traits)
+	if err != nil {
+		return nil, err
+	}
+	traitsMap := make(map[string]map[string]interface{})
+	if err = json.Unmarshal(data, &traitsMap); err != nil {
+		return nil, err
+	}
+
+	return traitsMap, nil
 }
 
 // ComputeForIntegrationKit a digest of the fields that are relevant for the deployment
@@ -232,7 +281,7 @@ func ComputeForSource(s v1.SourceSpec) (string, error) {
 	return digest, nil
 }
 
-func sortedTraitSpecMapKeys(m map[string]v1.TraitSpec) []string {
+func sortedTraitsMapKeys(m map[string]map[string]interface{}) []string {
 	res := make([]string, len(m))
 	i := 0
 	for k := range m {

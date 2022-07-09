@@ -19,24 +19,30 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/pkg/errors"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/apis/camel/v1alpha1"
 	"github.com/apache/camel-k/pkg/client"
+	"github.com/apache/camel-k/pkg/trait"
 	"github.com/apache/camel-k/pkg/util/camel"
 	"github.com/apache/camel-k/pkg/util/kamelets"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
 	"github.com/apache/camel-k/pkg/util/resource"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+var namedConfRegExp = regexp.MustCompile("([a-z0-9-.]+)/.*")
 
 // newCmdPromote --.
 func newCmdPromote(rootCmdOptions *RootCmdOptions) (*cobra.Command, *promoteCmdOptions) {
@@ -118,19 +124,17 @@ func (o *promoteCmdOptions) run(cmd *cobra.Command, args []string) error {
 	}
 	if promoteKameletBinding {
 		// KameletBinding promotion
-		destKameletBinding, err := o.editKameletBinding(sourceKameletBinding, sourceIntegration)
-		if err != nil {
-			return errors.Wrap(err, "could not edit KameletBinding "+name)
-		}
+		destKameletBinding := o.editKameletBinding(sourceKameletBinding, sourceIntegration)
 
 		return c.Create(o.Context, destKameletBinding)
 	}
 	// Plain Integration promotion
-	destIntegration, err := o.editIntegration(sourceIntegration)
+	destIntegration := o.editIntegration(sourceIntegration)
+
+	// Ensure the destination namespace has access to the source namespace images
+	err = addSystemPullerRoleBinding(o.Context, c, sourceIntegration.Namespace, destIntegration.Namespace)
 	if err != nil {
-		if err != nil {
-			return errors.Wrap(err, "could not edit Integration "+name)
-		}
+		return err
 	}
 
 	return c.Create(o.Context, destIntegration)
@@ -177,76 +181,84 @@ func (o *promoteCmdOptions) getIntegration(c client.Client, name string) (*v1.In
 }
 
 func (o *promoteCmdOptions) validateDestResources(c client.Client, it *v1.Integration) error {
-	var traits map[string][]string
 	var configmaps []string
 	var secrets []string
 	var pvcs []string
 	var kamelets []string
-	if it.Spec.Traits == nil {
-		return nil
-	}
+
 	// Mount trait
-	mounts := it.Spec.Traits["mount"]
-	if err := json.Unmarshal(mounts.Configuration.RawMessage, &traits); err != nil {
+	mount, err := toPropertyMap(it.Spec.Traits.Mount)
+	if err != nil {
 		return err
 	}
-	for t, v := range traits {
+	for t, v := range mount {
 		switch t {
 		case "configs":
-			for _, c := range v {
-				if conf, parseErr := resource.ParseConfig(c); parseErr == nil {
-					if conf.StorageType() == resource.StorageTypeConfigmap {
-						configmaps = append(configmaps, conf.Name())
-					} else if conf.StorageType() == resource.StorageTypeSecret {
-						secrets = append(secrets, conf.Name())
+			if list, ok := v.([]string); ok {
+				for _, cn := range list {
+					if conf, parseErr := resource.ParseConfig(cn); parseErr == nil {
+						if conf.StorageType() == resource.StorageTypeConfigmap {
+							configmaps = append(configmaps, conf.Name())
+						} else if conf.StorageType() == resource.StorageTypeSecret {
+							secrets = append(secrets, conf.Name())
+						}
+					} else {
+						return parseErr
 					}
-				} else {
-					return parseErr
 				}
 			}
 		case "resources":
-			for _, c := range v {
-				if conf, parseErr := resource.ParseResource(c); parseErr == nil {
-					if conf.StorageType() == resource.StorageTypeConfigmap {
-						configmaps = append(configmaps, conf.Name())
-					} else if conf.StorageType() == resource.StorageTypeSecret {
-						secrets = append(secrets, conf.Name())
+			if list, ok := v.([]string); ok {
+				for _, cn := range list {
+					if conf, parseErr := resource.ParseResource(cn); parseErr == nil {
+						if conf.StorageType() == resource.StorageTypeConfigmap {
+							configmaps = append(configmaps, conf.Name())
+						} else if conf.StorageType() == resource.StorageTypeSecret {
+							secrets = append(secrets, conf.Name())
+						}
+					} else {
+						return parseErr
 					}
-				} else {
-					return parseErr
 				}
 			}
 		case "volumes":
-			for _, c := range v {
-				if conf, parseErr := resource.ParseVolume(c); parseErr == nil {
-					if conf.StorageType() == resource.StorageTypePVC {
-						pvcs = append(pvcs, conf.Name())
+			if list, ok := v.([]string); ok {
+				for _, cn := range list {
+					if conf, parseErr := resource.ParseVolume(cn); parseErr == nil {
+						if conf.StorageType() == resource.StorageTypePVC {
+							pvcs = append(pvcs, conf.Name())
+						}
+					} else {
+						return parseErr
 					}
-				} else {
-					return parseErr
 				}
 			}
 		}
 	}
-	// Openapi trait
-	openapis := it.Spec.Traits["openapi"]
-	if err := json.Unmarshal(openapis.Configuration.RawMessage, &traits); err != nil {
+
+	// OpenAPI trait
+	openapi, err := toPropertyMap(it.Spec.Traits.OpenAPI)
+	if err != nil {
 		return err
 	}
-	for k, v := range traits {
-		for _, c := range v {
-			if k == "configmaps" {
-				configmaps = append(configmaps, c)
-			}
+	for k, v := range openapi {
+		if k != "configmaps" {
+			continue
+		}
+		if list, ok := v.([]string); ok {
+			configmaps = append(configmaps, list...)
+			break
 		}
 	}
-	// Kamelet trait
-	kameletTrait := it.Spec.Traits["kamelets"]
-	var kameletListTrait map[string]string
-	if err := json.Unmarshal(kameletTrait.Configuration.RawMessage, &kameletListTrait); err != nil {
+
+	// Kamelets trait
+	kamelet, err := toPropertyMap(it.Spec.Traits.Kamelets)
+	if err != nil {
 		return err
 	}
-	kamelets = strings.Split(kameletListTrait["list"], ",")
+	if list, ok := kamelet["list"].(string); ok {
+		kamelets = strings.Split(list, ",")
+	}
 	sourceKamelets, err := o.listKamelets(c, it)
 	if err != nil {
 		return err
@@ -287,6 +299,19 @@ func (o *promoteCmdOptions) validateDestResources(c client.Client, it *v1.Integr
 	return nil
 }
 
+func toPropertyMap(src interface{}) (map[string]interface{}, error) {
+	propMap, err := trait.ToPropertyMap(src)
+	if err != nil {
+		return nil, err
+	}
+	// Migrate legacy configuration properties before promoting
+	if err := trait.MigrateLegacyConfiguration(propMap); err != nil {
+		return nil, err
+	}
+
+	return propMap, nil
+}
+
 func (o *promoteCmdOptions) listKamelets(c client.Client, it *v1.Integration) ([]string, error) {
 	catalog, err := camel.DefaultCatalog()
 	if err != nil {
@@ -297,10 +322,18 @@ func (o *promoteCmdOptions) listKamelets(c client.Client, it *v1.Integration) ([
 		return nil, err
 	}
 
-	// We must remove any default source/sink
 	var filtered []string
 	for _, k := range kamelets {
-		if k != "source" && k != "sink" {
+		// We must remove any default source/sink
+		if k == "source" || k == "sink" {
+			continue
+		}
+
+		// We must drop any named configurations
+		match := namedConfRegExp.FindStringSubmatch(k)
+		if len(match) > 0 {
+			filtered = append(filtered, match[1])
+		} else {
 			filtered = append(filtered, k)
 		}
 	}
@@ -360,30 +393,28 @@ func existsKamelet(ctx context.Context, c client.Client, name string, namespace 
 	return true
 }
 
-func (o *promoteCmdOptions) editIntegration(it *v1.Integration) (*v1.Integration, error) {
+func (o *promoteCmdOptions) editIntegration(it *v1.Integration) *v1.Integration {
 	dst := v1.NewIntegration(o.To, it.Name)
 	contImage := it.Status.Image
 	dst.Spec = *it.Spec.DeepCopy()
-	if dst.Spec.Traits == nil {
-		dst.Spec.Traits = map[string]v1.TraitSpec{}
+	if dst.Spec.Traits.Container == nil {
+		dst.Spec.Traits.Container = &traitv1.ContainerTrait{}
 	}
-	editedContTrait, err := editContainerImage(dst.Spec.Traits["container"], contImage)
-	dst.Spec.Traits["container"] = editedContTrait
-	return &dst, err
+	dst.Spec.Traits.Container.Image = contImage
+	return &dst
 }
 
-func (o *promoteCmdOptions) editKameletBinding(kb *v1alpha1.KameletBinding, it *v1.Integration) (*v1alpha1.KameletBinding, error) {
+func (o *promoteCmdOptions) editKameletBinding(kb *v1alpha1.KameletBinding, it *v1.Integration) *v1alpha1.KameletBinding {
 	dst := v1alpha1.NewKameletBinding(o.To, kb.Name)
 	dst.Spec = *kb.Spec.DeepCopy()
 	contImage := it.Status.Image
 	if dst.Spec.Integration == nil {
 		dst.Spec.Integration = &v1.IntegrationSpec{}
 	}
-	if dst.Spec.Integration.Traits == nil {
-		dst.Spec.Integration.Traits = map[string]v1.TraitSpec{}
+	if dst.Spec.Integration.Traits.Container == nil {
+		dst.Spec.Integration.Traits.Container = &traitv1.ContainerTrait{}
 	}
-	editedContTrait, err := editContainerImage(dst.Spec.Integration.Traits["container"], contImage)
-	dst.Spec.Integration.Traits["container"] = editedContTrait
+	dst.Spec.Integration.Traits.Container.Image = contImage
 	if dst.Spec.Source.Ref != nil {
 		dst.Spec.Source.Ref.Namespace = o.To
 	}
@@ -397,30 +428,38 @@ func (o *promoteCmdOptions) editKameletBinding(kb *v1alpha1.KameletBinding, it *
 			}
 		}
 	}
-	return &dst, err
+	return &dst
 }
 
-func editContainerImage(contTrait v1.TraitSpec, image string) (v1.TraitSpec, error) {
-	var editedTrait v1.TraitSpec
-	m := make(map[string]map[string]interface{})
-	data, err := json.Marshal(contTrait)
-	if err != nil {
-		return editedTrait, err
+//
+// RoleBinding is required to allow access to images in one namespace
+// by another namespace. Without this on rbac-enabled clusters, the
+// image cannot be pulled.
+//
+func addSystemPullerRoleBinding(ctx context.Context, c client.Client, sourceNS string, destNS string) error {
+	rb := &rbacv1.RoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "RoleBinding",
+			APIVersion: "rbac.authorization.k8s.io/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-image-puller", destNS),
+			Namespace: sourceNS,
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      "default",
+				Namespace: destNS,
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind: "ClusterRole",
+			Name: "system:image-puller",
+		},
 	}
-	err = json.Unmarshal(data, &m)
-	if err != nil {
-		return editedTrait, err
-	}
-	// We must initialize, if it was not initialized so far
-	if m["configuration"] == nil {
-		m["configuration"] = make(map[string]interface{})
-	}
-	m["configuration"]["image"] = image
-	newData, err := json.Marshal(m)
-	if err != nil {
-		return editedTrait, err
-	}
-	err = json.Unmarshal(newData, &editedTrait)
+	applier := c.ServerOrClientSideApplier()
+	err := applier.Apply(ctx, rb)
 
-	return editedTrait, err
+	return err
 }

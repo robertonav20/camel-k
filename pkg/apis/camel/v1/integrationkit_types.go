@@ -20,6 +20,8 @@ package v1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 )
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
@@ -48,21 +50,36 @@ type IntegrationKit struct {
 	Status IntegrationKitStatus `json:"status,omitempty"`
 }
 
-// IntegrationKitSpec defines a container image and additional configurations required to kick off an `Integration` which certain features
+// IntegrationKitSpec defines a container image and additional configurations required to kick off an `Integration` with certain features
 type IntegrationKitSpec struct {
-	// the container image as identify in the container registry
+	// the container image as identified in the container registry
 	Image string `json:"image,omitempty"`
 	// a list of Camel dependecies used by this kit
 	Dependencies []string `json:"dependencies,omitempty"`
 	// the profile which is expected by this kit
 	Profile TraitProfile `json:"profile,omitempty"`
 	// traits that the kit will execute
-	Traits map[string]TraitSpec `json:"traits,omitempty"`
+	Traits IntegrationKitTraits `json:"traits,omitempty"`
 	// configuration used by the kit
 	// TODO: we should deprecate in future releases in favour of mount, openapi or camel traits
 	Configuration []ConfigurationSpec `json:"configuration,omitempty"`
 	// Maven repositories that can be used by the kit
 	Repositories []string `json:"repositories,omitempty"`
+}
+
+// IntegrationKitTraits defines traits assigned to an `IntegrationKit`
+type IntegrationKitTraits struct {
+	// The builder trait is internally used to determine the best strategy to build and configure IntegrationKits.
+	Builder *trait.BuilderTrait `property:"builder" json:"builder,omitempty"`
+	// The Quarkus trait configures the Quarkus runtime.
+	// It's enabled by default.
+	// NOTE: Compiling to a native executable, i.e. when using `package-type=native`, is only supported for kamelets, as well as YAML and XML integrations. It also requires at least 4GiB of memory, so the Pod running the native build, that is either the operator Pod, or the build Pod (depending on the build strategy configured for the platform), must have enough memory available.
+	Quarkus *trait.QuarkusTrait `property:"quarkus" json:"quarkus,omitempty"`
+	// The Registry trait sets up Maven to use the Image registry as a Maven repository.
+	Registry *trait.RegistryTrait `property:"registry" json:"registry,omitempty"`
+
+	// The collection of addon trait configurations
+	Addons map[string]AddonTrait `json:"addons,omitempty"`
 }
 
 // IntegrationKitStatus defines the observed state of IntegrationKit

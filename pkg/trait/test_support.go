@@ -18,15 +18,22 @@ limitations under the License.
 package trait
 
 import (
+	"encoding/json"
+	"testing"
+
 	serving "knative.dev/serving/pkg/apis/serving/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/api/batch/v1beta1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util/kubernetes"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func createNominalDeploymentTraitTest() (*Environment, *appsv1.Deployment) {
@@ -93,12 +100,12 @@ func createNominalKnativeServiceTraitTest() (*Environment, *serving.Service) {
 	return environment, knativeService
 }
 
-func createNominalCronJobTraitTest() (*Environment, *v1beta1.CronJob) {
-	cronJob := &v1beta1.CronJob{
+func createNominalCronJobTraitTest() (*Environment, *batchv1.CronJob) {
+	cronJob := &batchv1.CronJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "integration-name",
 		},
-		Spec: v1beta1.CronJobSpec{},
+		Spec: batchv1.CronJobSpec{},
 	}
 
 	environment := &Environment{
@@ -114,4 +121,43 @@ func createNominalCronJobTraitTest() (*Environment, *v1beta1.CronJob) {
 	}
 
 	return environment, cronJob
+}
+
+// nolint: staticcheck
+func configurationFromMap(t *testing.T, configMap map[string]interface{}) *traitv1.Configuration {
+	t.Helper()
+
+	data, err := json.Marshal(configMap)
+	require.NoError(t, err)
+
+	return &traitv1.Configuration{
+		RawMessage: data,
+	}
+}
+
+func traitToMap(t *testing.T, trait interface{}) map[string]interface{} {
+	t.Helper()
+
+	traitMap := make(map[string]interface{})
+
+	data, err := json.Marshal(trait)
+	require.NoError(t, err)
+
+	err = json.Unmarshal(data, &traitMap)
+	require.NoError(t, err)
+
+	return traitMap
+}
+
+func ToAddonTrait(t *testing.T, config map[string]interface{}) v1.AddonTrait {
+	t.Helper()
+
+	data, err := json.Marshal(config)
+	assert.NoError(t, err)
+
+	var addon v1.AddonTrait
+	err = json.Unmarshal(data, &addon)
+	assert.NoError(t, err)
+
+	return addon
 }

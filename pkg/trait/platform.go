@@ -19,27 +19,17 @@ package trait
 
 import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/utils/pointer"
 
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/platform"
 	"github.com/apache/camel-k/pkg/util/openshift"
 )
 
-// The platform trait is a base trait that is used to assign an integration platform to an integration.
-//
-// In case the platform is missing, the trait is allowed to create a default platform.
-// This feature is especially useful in contexts where there's no need to provide a custom configuration for the platform
-// (e.g. on OpenShift the default settings work, since there's an embedded container image registry).
-//
-// +camel-k:trait=platform.
 type platformTrait struct {
-	BaseTrait `property:",squash"`
-	// To create a default (empty) platform when the platform is missing.
-	CreateDefault *bool `property:"create-default" json:"createDefault,omitempty"`
-	// Indicates if the platform should be created globally in the case of global operator (default true).
-	Global *bool `property:"global" json:"global,omitempty"`
-	// To automatically detect from the environment if a default platform can be created (it will be created on OpenShift only).
-	Auto *bool `property:"auto" json:"auto,omitempty"`
+	BaseTrait
+	traitv1.PlatformTrait `property:",squash"`
 }
 
 func newPlatformTrait() Trait {
@@ -49,7 +39,7 @@ func newPlatformTrait() Trait {
 }
 
 func (t *platformTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, nil
 	}
 
@@ -57,7 +47,7 @@ func (t *platformTrait) Configure(e *Environment) (bool, error) {
 		return false, nil
 	}
 
-	if IsNilOrFalse(t.Auto) {
+	if !pointer.BoolDeref(t.Auto, false) {
 		if e.Platform == nil {
 			if t.CreateDefault == nil {
 				// Calculate if the platform should be automatically created when missing.
@@ -103,13 +93,13 @@ func (t *platformTrait) Apply(e *Environment) error {
 func (t *platformTrait) getOrCreatePlatform(e *Environment) (*v1.IntegrationPlatform, error) {
 	pl, err := platform.GetOrFindForResource(e.Ctx, t.Client, e.Integration, false)
 	if err != nil && k8serrors.IsNotFound(err) {
-		if IsTrue(t.CreateDefault) {
+		if pointer.BoolDeref(t.CreateDefault, false) {
 			platformName := e.Integration.Status.Platform
 			if platformName == "" {
 				platformName = platform.DefaultPlatformName
 			}
 			namespace := e.Integration.Namespace
-			if IsTrue(t.Global) {
+			if pointer.BoolDeref(t.Global, false) {
 				operatorNamespace := platform.GetOperatorNamespace()
 				if operatorNamespace != "" {
 					namespace = operatorNamespace

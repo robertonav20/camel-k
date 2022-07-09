@@ -18,6 +18,9 @@ limitations under the License.
 package trait
 
 import (
+	"k8s.io/utils/pointer"
+
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/util/envvar"
 )
 
@@ -30,33 +33,22 @@ const (
 	defaultLogLevel                        = "INFO"
 )
 
-// The Logging trait is used to configure Integration runtime logging options (such as color and format).
-// The logging backend is provided by Quarkus, whose configuration is documented at https://quarkus.io/guides/logging.
-//
-// +camel-k:trait=logging.
 type loggingTrait struct {
-	BaseTrait `property:",squash"`
-	// Colorize the log output
-	Color *bool `property:"color" json:"color,omitempty"`
-	// Logs message format
-	Format string `property:"format" json:"format,omitempty"`
-	// Adjust the logging level (defaults to INFO)
-	Level string `property:"level" json:"level,omitempty"`
-	// Output the logs in JSON
-	JSON *bool `property:"json" json:"json,omitempty"`
-	// Enable "pretty printing" of the JSON logs
-	JSONPrettyPrint *bool `property:"json-pretty-print" json:"jsonPrettyPrint,omitempty"`
+	BaseTrait
+	traitv1.LoggingTrait `property:",squash"`
 }
 
 func newLoggingTraitTrait() Trait {
 	return &loggingTrait{
 		BaseTrait: NewBaseTrait("logging", 800),
-		Level:     defaultLogLevel,
+		LoggingTrait: traitv1.LoggingTrait{
+			Level: defaultLogLevel,
+		},
 	}
 }
 
 func (l loggingTrait) Configure(environment *Environment) (bool, error) {
-	if IsFalse(l.Enabled) {
+	if !pointer.BoolDeref(l.Enabled, true) {
 		return false, nil
 	}
 
@@ -70,16 +62,16 @@ func (l loggingTrait) Apply(environment *Environment) error {
 		envvar.SetVal(&environment.EnvVars, envVarQuarkusLogConsoleFormat, l.Format)
 	}
 
-	if IsTrue(l.JSON) {
+	if pointer.BoolDeref(l.JSON, false) {
 		envvar.SetVal(&environment.EnvVars, envVarQuarkusLogConsoleJSON, True)
-		if IsTrue(l.JSONPrettyPrint) {
+		if pointer.BoolDeref(l.JSONPrettyPrint, false) {
 			envvar.SetVal(&environment.EnvVars, envVarQuarkusLogConsoleJSONPrettyPrint, True)
 		}
 	} else {
 		// If the trait is false OR unset, we default to false.
 		envvar.SetVal(&environment.EnvVars, envVarQuarkusLogConsoleJSON, False)
 
-		if IsNilOrTrue(l.Color) {
+		if pointer.BoolDeref(l.Color, true) {
 			envvar.SetVal(&environment.EnvVars, envVarQuarkusLogConsoleColor, True)
 		}
 	}

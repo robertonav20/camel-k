@@ -23,18 +23,17 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"k8s.io/utils/pointer"
+
 	v1 "github.com/apache/camel-k/pkg/apis/camel/v1"
+	traitv1 "github.com/apache/camel-k/pkg/apis/camel/v1/trait"
 	"github.com/apache/camel-k/pkg/apis/camel/v1alpha1"
 	"github.com/apache/camel-k/pkg/util"
 )
 
-// The error-handler is a platform trait used to inject Error Handler source into the integration runtime.
-//
-// +camel-k:trait=error-handler.
 type errorHandlerTrait struct {
-	BaseTrait `property:",squash"`
-	// The error handler ref name provided or found in application properties
-	ErrorHandlerRef string `property:"ref" json:"ref,omitempty"`
+	BaseTrait
+	traitv1.ErrorHandlerTrait `property:",squash"`
 }
 
 func newErrorHandlerTrait() Trait {
@@ -50,7 +49,7 @@ func (t *errorHandlerTrait) IsPlatformTrait() bool {
 }
 
 func (t *errorHandlerTrait) Configure(e *Environment) (bool, error) {
-	if IsFalse(t.Enabled) {
+	if !pointer.BoolDeref(t.Enabled, true) {
 		return false, nil
 	}
 
